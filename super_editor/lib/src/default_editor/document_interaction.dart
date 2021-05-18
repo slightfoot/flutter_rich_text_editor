@@ -12,6 +12,7 @@ import 'package:super_editor/src/core/document_selection.dart';
 import 'package:super_editor/src/core/edit_context.dart';
 import 'package:super_editor/src/infrastructure/_logging.dart';
 import 'package:super_editor/src/infrastructure/multi_tap_gesture.dart';
+import 'package:super_editor/src/infrastructure/keyboard.dart' show PrimaryShortcutKey;
 
 import 'text_tools.dart';
 
@@ -636,9 +637,16 @@ class _DocumentInteractorState extends State<DocumentInteractor> with SingleTick
     required Widget child,
   }) {
     return Focus(
-      onKey: (node, event) => KeyEventResult.handled,
+      // The cmd+v and cntl+v paste key combos are allowed through this
+      // net because on web those keys must be handled by the browser, itself,
+      // to avoid a permissions issue with the clipboard.
+      onKey: (node, event) => _isPasteCommand(event) ? KeyEventResult.ignored : KeyEventResult.handled,
       child: child,
     );
+  }
+
+  bool _isPasteCommand(RawKeyEvent event) {
+    return event.isPrimaryShortcutKeyPressed && event.logicalKey == LogicalKeyboardKey.keyV;
   }
 
   Widget _buildCursorStyle({

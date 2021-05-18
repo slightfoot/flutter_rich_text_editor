@@ -588,9 +588,12 @@ ExecutionInstruction insertCharacterInTextComposable({
   if (!_isTextEntryNode(document: editContext.editor.document, selection: editContext.composer.selection!)) {
     return ExecutionInstruction.continueExecution;
   }
-  if (keyEvent.character == null || keyEvent.character == '') {
+  if (keyEvent.character == null ||
+      keyEvent.character == '' ||
+      webBugBlacklistCharacters.contains(keyEvent.character)) {
     return ExecutionInstruction.continueExecution;
   }
+  print('Inserting character in TextComposable');
 
   String character = keyEvent.character!;
 

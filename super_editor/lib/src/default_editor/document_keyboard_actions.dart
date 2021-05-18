@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -68,12 +69,23 @@ ExecutionInstruction pasteWhenCmdVIsPressed({
     return ExecutionInstruction.continueExecution;
   }
 
+  if (kIsWeb) {
+    // On web the standard Flutter clipboard behavior requires special
+    // browser permissions. We don't want the user to have to grant permissions.
+    //
+    // Browsers include a built-in paste event system that doesn't require
+    // permissions. Therefore, on web we swallow this event and do nothing
+    // in this handler, but the editor includes behavior elsewhere to apply
+    // the pasted content. Look for the PasteEventHandler.
+    return ExecutionInstruction.haltExecution;
+  }
+
   _log.log('pasteWhenCmdVIsPressed', 'Pasting clipboard content...');
   DocumentPosition pastePosition = editContext.composer.selection!.extent;
 
   // Delete all currently selected content.
   if (!editContext.composer.selection!.isCollapsed) {
-    pastePosition = _getDocumentPositionAfterDeletion(
+    pastePosition = getDocumentPositionAfterDeletion(
       document: editContext.editor.document,
       selection: editContext.composer.selection!,
     );
@@ -135,7 +147,7 @@ Future<void> _paste({
   _log.log('_paste', 'Content from clipboard: $content');
 
   editor.executeCommand(
-    _PasteEditorCommand(
+    PasteEditorCommand(
       content: content,
       pastePosition: pastePosition,
       composer: composer,
@@ -143,8 +155,8 @@ Future<void> _paste({
   );
 }
 
-class _PasteEditorCommand implements EditorCommand {
-  _PasteEditorCommand({
+class PasteEditorCommand implements EditorCommand {
+  PasteEditorCommand({
     required String content,
     required DocumentPosition pastePosition,
     required DocumentComposer composer,
@@ -419,13 +431,16 @@ ExecutionInstruction deleteExpandedSelectionWhenCharacterOrDestructiveKeyPressed
   final isDestructiveKey =
       keyEvent.logicalKey == LogicalKeyboardKey.backspace || keyEvent.logicalKey == LogicalKeyboardKey.delete;
 
-  final shouldDeleteSelection =
-      !isShiftPressed && (isDestructiveKey || (keyEvent.character != null && keyEvent.character != ''));
+  final shouldDeleteSelection = !isShiftPressed &&
+      (isDestructiveKey ||
+          (keyEvent.character != null &&
+              keyEvent.character != '' &&
+              !webBugBlacklistCharacters.contains(keyEvent.character)));
   if (!shouldDeleteSelection) {
     return ExecutionInstruction.continueExecution;
   }
 
-  final newSelectionPosition = _getDocumentPositionAfterDeletion(
+  final newSelectionPosition = getDocumentPositionAfterDeletion(
     document: editContext.editor.document,
     selection: editContext.composer.selection!,
   );
@@ -442,7 +457,7 @@ ExecutionInstruction deleteExpandedSelectionWhenCharacterOrDestructiveKeyPressed
   return isDestructiveKey ? ExecutionInstruction.haltExecution : ExecutionInstruction.continueExecution;
 }
 
-DocumentPosition _getDocumentPositionAfterDeletion({
+DocumentPosition getDocumentPositionAfterDeletion({
   required Document document,
   required DocumentSelection selection,
 }) {

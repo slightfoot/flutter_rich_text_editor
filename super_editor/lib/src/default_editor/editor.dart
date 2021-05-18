@@ -4,6 +4,7 @@ import 'package:super_editor/src/core/document.dart';
 import 'package:super_editor/src/core/document_composer.dart';
 import 'package:super_editor/src/core/document_editor.dart';
 import 'package:super_editor/src/core/document_layout.dart';
+import 'package:super_editor/src/core/document_selection.dart';
 import 'package:super_editor/src/core/edit_context.dart';
 import 'package:super_editor/src/default_editor/attributions.dart';
 import 'package:super_editor/src/default_editor/blockquote.dart';
@@ -11,6 +12,7 @@ import 'package:super_editor/src/default_editor/horizontal_rule.dart';
 import 'package:super_editor/src/default_editor/image.dart';
 import 'package:super_editor/src/default_editor/list_items.dart';
 import 'package:super_editor/src/infrastructure/_listenable_builder.dart';
+import 'package:super_editor/src/infrastructure/_paste_event_handler_interface.dart';
 import 'package:super_editor/src/infrastructure/attributed_spans.dart';
 import 'package:super_editor/src/infrastructure/attributed_text.dart';
 
@@ -18,6 +20,7 @@ import 'box_component.dart';
 import 'document_interaction.dart';
 import 'document_keyboard_actions.dart';
 import 'layout.dart';
+import 'multi_node_editing.dart';
 import 'paragraph.dart';
 import 'styles.dart';
 import 'text.dart';
@@ -195,6 +198,8 @@ class _EditorState extends State<Editor> {
 
   DocumentPosition? _previousSelectionExtent;
 
+  PasteEventHandler? _webPasteEventHandler;
+
   @override
   void initState() {
     super.initState();
@@ -202,7 +207,10 @@ class _EditorState extends State<Editor> {
     _composer = widget.composer ?? DocumentComposer();
     _composer.addListener(_updateComposerPreferencesAtSelection);
 
-    _focusNode = widget.focusNode ?? FocusNode();
+    _focusNode = (widget.focusNode ?? FocusNode())..addListener(_onFocusChange);
+    if (_focusNode.hasFocus) {
+      _startListeningForWebPasteEvents();
+    }
 
     _docLayoutKey = widget.documentLayoutKey ?? GlobalKey();
   }
@@ -211,7 +219,6 @@ class _EditorState extends State<Editor> {
   void didUpdateWidget(Editor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.composer != oldWidget.composer) {
-      print('Composer changed!');
       _composer.removeListener(_updateComposerPreferencesAtSelection);
 
       _composer = widget.composer ?? DocumentComposer();
@@ -224,6 +231,7 @@ class _EditorState extends State<Editor> {
       _composer.selection = null;
     }
     if (widget.focusNode != oldWidget.focusNode) {
+      _focusNode.removeListener(_onFocusChange);
       _focusNode = widget.focusNode ?? FocusNode();
     }
     if (widget.documentLayoutKey != oldWidget.documentLayoutKey) {
@@ -237,12 +245,65 @@ class _EditorState extends State<Editor> {
       _composer.dispose();
     }
 
+    _focusNode.removeListener(_onFocusChange);
     if (widget.focusNode == null) {
       // We are using our own private FocusNode. Dispose it.
       _focusNode.dispose();
     }
 
+    _stopListeningForWebPasteEvents();
+
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    print('Editor has focus: ${_focusNode.hasFocus}');
+    if (_focusNode.hasFocus) {
+      _startListeningForWebPasteEvents();
+    } else {
+      _stopListeningForWebPasteEvents();
+    }
+  }
+
+  void _startListeningForWebPasteEvents() {
+    print('Listening for paste events');
+    _webPasteEventHandler = createPlatformPasteEventHandler(_pasteContent);
+  }
+
+  void _pasteContent(String content) {
+    if (_composer.selection == null) {
+      return;
+    }
+
+    DocumentPosition pastePosition = _composer.selection!.extent;
+
+    // Delete all currently selected content.
+    if (!_composer.selection!.isCollapsed) {
+      pastePosition = getDocumentPositionAfterDeletion(
+        document: widget.editor.document,
+        selection: _composer.selection!,
+      );
+
+      // Delete the selected content.
+      widget.editor.executeCommand(
+        DeleteSelectionCommand(documentSelection: _composer.selection!),
+      );
+
+      _composer.selection = DocumentSelection.collapsed(position: pastePosition);
+    }
+
+    widget.editor.executeCommand(
+      PasteEditorCommand(
+        content: content,
+        pastePosition: pastePosition,
+        composer: _composer,
+      ),
+    );
+  }
+
+  void _stopListeningForWebPasteEvents() {
+    print('Stopping listening for paste events');
+    _webPasteEventHandler?.dispose();
   }
 
   void _updateComposerPreferencesAtSelection() {

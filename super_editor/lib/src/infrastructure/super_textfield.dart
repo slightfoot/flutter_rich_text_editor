@@ -13,6 +13,7 @@ import 'package:super_editor/src/infrastructure/_logging.dart';
 import 'package:super_editor/src/infrastructure/selectable_text.dart';
 import 'package:super_editor/src/infrastructure/text_layout.dart';
 
+import '_paste_event_handler_interface.dart';
 import 'attributed_text.dart';
 import 'keyboard.dart';
 import 'multi_tap_gesture.dart';
@@ -102,12 +103,17 @@ class SuperTextFieldState extends State<SuperTextField> {
 
   double? _viewportHeight;
 
+  PasteEventHandler? _webPasteEventHandler;
+
   @override
   void initState() {
     super.initState();
 
     _focusNode = (widget.focusNode ?? FocusNode())..addListener(_onFocusChange);
     _hasFocus = _focusNode.hasFocus;
+    if (_hasFocus) {
+      _startListeningForWebPasteEvents();
+    }
 
     _controller = (widget.textController ?? AttributedTextEditingController())
       ..addListener(_onSelectionOrContentChange);
@@ -163,10 +169,33 @@ class SuperTextFieldState extends State<SuperTextField> {
     // controller's text position to the end of the available content.
     //
     // This behavior matches Flutter's standard behavior.
-    if (_focusNode.hasFocus && !_hasFocus) {
+    if (_focusNode.hasFocus && !_hasFocus && _controller.selection.extentOffset == -1) {
       _controller.selection = TextSelection.collapsed(offset: _controller.text.text.length);
     }
     _hasFocus = _focusNode.hasFocus;
+
+    if (_hasFocus) {
+      _startListeningForWebPasteEvents();
+    } else {
+      _stopListeningForWebPasteEvents();
+    }
+  }
+
+  void _startListeningForWebPasteEvents() {
+    print('Listening for paste events');
+    _webPasteEventHandler = createPlatformPasteEventHandler(_pasteContent);
+  }
+
+  void _pasteContent(String content) {
+    print('Inserting clipboard text: $content');
+    _controller
+      ..deleteSelectedText()
+      ..insertTextAtCaret(content);
+  }
+
+  void _stopListeningForWebPasteEvents() {
+    print('Stopping listening for paste events');
+    _webPasteEventHandler?.dispose();
   }
 
   void _onSelectionOrContentChange() {
@@ -1241,6 +1270,17 @@ class DefaultSuperTextFieldKeyboardHandlers {
       return TextFieldKeyboardHandlerResult.notHandled;
     }
 
+    if (kIsWeb) {
+      // On web the standard Flutter clipboard behavior requires special
+      // browser permissions. We don't want the user to have to grant permissions.
+      //
+      // Browsers include a built-in paste event system that doesn't require
+      // permissions. Therefore, on web we swallow this event and do nothing
+      // in this handler, but the editor includes behavior elsewhere to apply
+      // the pasted content. Look for the PasteEventHandler.
+      return TextFieldKeyboardHandlerResult.blocked;
+    }
+
     if (!controller.selection.isCollapsed) {
       controller.deleteSelectedText();
     }
@@ -1513,21 +1553,26 @@ extension DefaultSuperTextFieldActions on AttributedTextEditingController {
   }
 
   Future<void> pasteClipboard() async {
-    final insertionOffset = selection.extentOffset;
     final clipboardData = await Clipboard.getData('text/plain');
 
     if (clipboardData != null && clipboardData.text != null) {
       final textToPaste = clipboardData.text!;
 
-      text = text.insertString(
-        textToInsert: textToPaste,
-        startOffset: insertionOffset,
-      );
-
-      selection = TextSelection.collapsed(
-        offset: insertionOffset + textToPaste.length,
-      );
+      insertTextAtCaret(textToPaste);
     }
+  }
+
+  void insertTextAtCaret(String textToInsert) {
+    final insertionOffset = selection.extentOffset;
+
+    text = text.insertString(
+      textToInsert: textToInsert,
+      startOffset: insertionOffset,
+    );
+
+    selection = TextSelection.collapsed(
+      offset: insertionOffset + textToInsert.length,
+    );
   }
 
   void selectAll() {
@@ -1708,7 +1753,10 @@ extension DefaultSuperTextFieldActions on AttributedTextEditingController {
   }
 
   void deleteSelectedText() {
-    assert(!selection.isCollapsed);
+    if (selection.isCollapsed) {
+      // Nothing is selected. Nothing to delete. Returning.
+      return;
+    }
 
     final deleteStartIndex = selection.start;
     final deleteEndIndex = selection.end;

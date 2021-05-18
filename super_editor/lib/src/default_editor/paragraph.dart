@@ -15,6 +15,7 @@ import 'package:super_editor/src/default_editor/document_interaction.dart';
 import 'package:super_editor/src/default_editor/text.dart';
 import 'package:super_editor/src/infrastructure/_logging.dart';
 import 'package:super_editor/src/infrastructure/attributed_text.dart';
+import 'package:super_editor/src/infrastructure/keyboard.dart';
 
 import 'horizontal_rule.dart';
 import 'image.dart';
@@ -150,12 +151,15 @@ ExecutionInstruction insertCharacterInParagraph({
   if (node is! ParagraphNode) {
     return ExecutionInstruction.continueExecution;
   }
-  if (keyEvent.character == null || keyEvent.character == '') {
+  if (keyEvent.character == null ||
+      keyEvent.character == '' ||
+      webBugBlacklistCharacters.contains(keyEvent.character)) {
     return ExecutionInstruction.continueExecution;
   }
   if (!editContext.composer.selection!.isCollapsed) {
     return ExecutionInstruction.continueExecution;
   }
+  print('Inserting character in paragraph');
 
   // Delegate the action to the standard insert-character behavior.
   insertCharacterInTextComposable(
