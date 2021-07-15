@@ -2,6 +2,8 @@ import 'package:example/demos/demo_RTL.dart';
 import 'package:example/demos/demo_markdown_serialization.dart';
 import 'package:example/demos/demo_paragraphs.dart';
 import 'package:example/demos/demo_selectable_text.dart';
+import 'package:example/demos/flutter_features/textinputclient/basic_text_input_client.dart';
+import 'package:example/demos/flutter_features/textinputclient/edittext.dart';
 import 'package:example/demos/supertextfield/demo_textfield.dart';
 import 'package:example/demos/example_editor/example_editor.dart';
 import 'package:example/demos/sliver_example_editor.dart';
@@ -219,6 +221,25 @@ final _menu = <_MenuGroup>[
         title: 'Attributed Text',
         pageBuilder: (context) {
           return AttributedTextDemo();
+        },
+      ),
+    ],
+  ),
+  _MenuGroup(
+    title: 'FLUTTER BEHAVIOR',
+    items: [
+      _MenuItem(
+        icon: Icons.text_fields,
+        title: 'Regular EditText',
+        pageBuilder: (context) {
+          return EditTextDemo();
+        },
+      ),
+      _MenuItem(
+        icon: Icons.text_fields,
+        title: 'Basic TextInputClient',
+        pageBuilder: (context) {
+          return BasicTextInputClientDemo();
         },
       ),
     ],
