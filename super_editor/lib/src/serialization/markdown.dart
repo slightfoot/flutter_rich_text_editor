@@ -1,25 +1,38 @@
 import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:super_editor/src/default_editor/attributions.dart';
 import 'package:super_editor/super_editor.dart';
-import 'package:markdown/markdown.dart' as md;
+
+/// A type signature for a function that visits a [md.Element] and optionally
+/// returns a relevant [DocumentNode] that should become a part of the document.
+///
+/// Will be called before the built-in Markdown to document visitors.
+///
+/// If this returns a non-null value, the returned [DocumentNode] will be added
+/// to the final [Document] and the built-in visitors will be skipped.
+typedef CustomMarkdownToDocumentVisitor = DocumentNode? Function(md.Element);
 
 // TODO: return a regular Document instead of a MutableDocument.
 //       For now, we return MutableDocument because DocumentEditor
 //       requires one. When the editing system matures, there should
 //       be a way to return something here that is not concrete.
-MutableDocument deserializeMarkdownToDocument(String markdown) {
+MutableDocument deserializeMarkdownToDocument(
+  String markdown, {
+  List<md.BlockSyntax>? customBlockSyntaxes,
+  CustomMarkdownToDocumentVisitor? customMarkdownToDocumentVisitor,
+}) {
   final markdownLines = const LineSplitter().convert(markdown);
 
-  final markdownDoc = md.Document();
+  final markdownDoc = md.Document(blockSyntaxes: customBlockSyntaxes);
   final blockParser = md.BlockParser(markdownLines, markdownDoc);
 
   // Parse markdown string to structured markdown.
   final markdownNodes = blockParser.parseLines();
 
   // Convert structured markdown to a Document.
-  final nodeVisitor = _MarkdownToDocument();
+  final nodeVisitor = _MarkdownToDocument(customMarkdownToDocumentVisitor);
   for (final node in markdownNodes) {
     node.accept(nodeVisitor);
   }
@@ -92,7 +105,8 @@ String serializeDocumentToMarkdown(Document doc) {
 /// contains [DocumentNode]s that correspond to the visited
 /// markdown content.
 class _MarkdownToDocument implements md.NodeVisitor {
-  _MarkdownToDocument();
+  _MarkdownToDocument(this._customVisitor);
+  final CustomMarkdownToDocumentVisitor? _customVisitor;
 
   final _content = <DocumentNode>[];
   List<DocumentNode> get content => _content;
@@ -101,6 +115,12 @@ class _MarkdownToDocument implements md.NodeVisitor {
 
   @override
   bool visitElementBefore(md.Element element) {
+    final customVisitorResult = _customVisitor?.call(element);
+    if (customVisitorResult != null) {
+      _content.add(customVisitorResult);
+      return true;
+    }
+
     // TODO: re-organize parsing such that visitElementBefore collects
     //       the block type info and then visitText and visitElementAfter
     //       take the action to create the node (#153)
